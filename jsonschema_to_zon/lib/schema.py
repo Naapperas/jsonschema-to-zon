@@ -102,7 +102,7 @@ def _parse(
                     case "boolean":
                         schema = BooleanSchema()
                     case "string":
-                        schema = StringSchema()
+                        schema = StringSchema(rest)
                     case _:
                         raise InvalidSchemaDefinition(
                             f"Unknown schema type: {schema_type}"
@@ -238,8 +238,30 @@ class StringSchema(Schema):
 class IntegerSchema(Schema):
     """Sub-schema for Integer numeric values in a JSON Schema document"""
 
+    def __init__(self, definition: dict[str, Any]):
+        super().__init__()
+
+        self.definition = definition
+
     def generate(self):
-        return zon.number().int()
+        validator = zon.number().int()
+
+        if "multipleOf" in self.definition:
+            validator = validator.multiple_of(self.definition["multipleOf"])
+
+        if "minimum" in self.definition:
+            validator = validator.gte(self.definition["minimum"])
+
+        if "exclusiveMinimum" in self.definition:
+            validator = validator.gt(self.definition["exclusiveMinimum"])
+
+        if "maximum" in self.definition:
+            validator = validator.lte(self.definition["maximum"])
+
+        if "exclusiveMaximum" in self.definition:
+            validator = validator.lt(self.definition["exclusiveMaximum"])
+
+        return validator
 
 
 class NumberSchema(Schema):
