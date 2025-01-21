@@ -215,8 +215,24 @@ class ObjectSchema(Schema):
 class StringSchema(Schema):
     """Sub-schema for String values in a JSON Schema document"""
 
+    def __init__(self, definition: dict[str, Any]):
+        super().__init__()
+
+        self.definition = definition
+
     def generate(self) -> Zon:
-        return zon.string()
+        validator = zon.string()
+
+        if "minLength" in self.definition:
+            validator = validator.min(self.definition["minLength"])
+
+        if "maxLength" in self.definition:
+            validator = validator.max(self.definition["maxLength"])
+
+        if "pattern" in self.definition:
+            validator = validator.regex(self.definition["pattern"])
+
+        return validator
 
 
 class IntegerSchema(Schema):
