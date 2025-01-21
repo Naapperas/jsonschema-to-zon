@@ -96,9 +96,9 @@ def _parse(
                     case "array":
                         schema = ArraySchema(rest)
                     case "integer":
-                        schema = IntegerSchema()
+                        schema = IntegerSchema(rest)
                     case "number":
-                        schema = NumberSchema()
+                        schema = NumberSchema(rest)
                     case "boolean":
                         schema = BooleanSchema()
                     case "string":
@@ -267,8 +267,30 @@ class IntegerSchema(Schema):
 class NumberSchema(Schema):
     """Sub-schema for arbitrary numeric values in a JSON Schema document"""
 
+    def __init__(self, definition: dict[str, Any]):
+        super().__init__()
+
+        self.definition = definition
+
     def generate(self):
-        return zon.number().float()
+        validator = zon.number().float()
+
+        if "multipleOf" in self.definition:
+            validator = validator.multiple_of(self.definition["multipleOf"])
+
+        if "minimum" in self.definition:
+            validator = validator.gte(self.definition["minimum"])
+
+        if "exclusiveMinimum" in self.definition:
+            validator = validator.gt(self.definition["exclusiveMinimum"])
+
+        if "maximum" in self.definition:
+            validator = validator.lte(self.definition["maximum"])
+
+        if "exclusiveMaximum" in self.definition:
+            validator = validator.lt(self.definition["exclusiveMaximum"])
+
+        return validator
 
 
 class JSONSchemaEnum(Zon):
