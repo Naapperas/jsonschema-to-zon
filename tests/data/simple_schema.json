@@ -14,28 +14,10 @@
         "vegetables": {
             "type": "array",
             "items": {
-                "type": "object",
-                "required": [
-                    "veggieName",
-                    "veggieLike"
-                ],
-                "properties": {
-                    "veggieName": {
-                        "type": "string",
-                        "description": "The name of the vegetable."
-                    },
-                    "veggieLike": {
-                        "type": "boolean",
-                        "description": "Do I like this vegetable?"
-                    }
-                }
+                "$ref": "#/$defs/veggie"
             }
         }
     },
-    "additionalProperties": false,
-    "required": [
-        "fruits"
-    ],
     "$defs": {
         "veggie": {
             "type": "object",

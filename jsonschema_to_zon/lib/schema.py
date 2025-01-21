@@ -26,6 +26,7 @@ class Schema(ABC):
     def __init__(self):
         self._version = ""
         self.id = None
+        self.defs: dict[str, Schema] = {}
 
     @property
     def version(self) -> str:
@@ -63,13 +64,25 @@ class Schema(ABC):
         if "$id" not in contents:
             raise InvalidSchemaDefinition("'$id' not found in JSON Schema document")
 
+        defs = {}
+        if "$defs" in contents:
+            defs = contents["$defs"]
+
+            defs = {
+                f"#/$defs/{def_name}": _parse(def_schema)
+                for def_name, def_schema in defs.items()
+            }
+
         # Parse the rest of the Schema document.
 
-        return _parse(contents)
+        schema = _parse(contents)
+        schema.defs = defs
+
+        return schema
 
 
 def _parse(
-    contents: Mapping[str, str | int | float | list | dict | bool | None]
+    contents: Mapping[str, str | int | float | list | dict | bool | None],
 ) -> Schema:
 
     match contents:
@@ -103,6 +116,8 @@ def _parse(
             return EnumSchema(values, rest)
         case {"const": value, **rest}:
             return ConstSchema(value, rest)
+        case {"$ref": def_ref}:
+            return RefSchema(def_ref)
         case _:
             raise InvalidSchemaDefinition(
                 f"Unknown schema type found in JSON Schema document: {contents}"
@@ -168,6 +183,7 @@ class ObjectSchema(Schema):
             "properties", {}
         ).items():
             sub_schema = _parse(property_definition)
+            sub_schema.defs = self.defs  # FIXME: should be different
 
             validator = sub_schema.generate().optional()
 
@@ -187,6 +203,7 @@ class ObjectSchema(Schema):
             != ObjectSchema._MARKER_ADDITIONAL_PROPERTIES
         ):
             additional_property_schema = _parse(self.definition["additionalProperties"])
+            additional_property_schema.defs = self.defs  # FIXME: should be different
 
             extra_keys_validator = additional_property_schema.generate()
 
@@ -266,7 +283,8 @@ class ArraySchema(Schema):
     """Sub-schema for arrays in a JSON Schema document."""
 
     class TYPE(Enum):
-        """Internal type used to denote, on validator generation time, which array type should be used"""
+        """Internal type used to denote, on validator generation time, \
+            which array type should be used"""
 
         LIST = auto()
         TUPLE = auto()
@@ -292,8 +310,17 @@ class ArraySchema(Schema):
         if self.schema_type == ArraySchema.TYPE.TUPLE:
             tuple_items_schemas = self.definition["prefixItems"]
 
+            def _compile_schema(schema_definition: dict[str, Any]):
+                schema = _parse(schema_definition)
+                schema.defs = self.defs  # FIXME: should be different
+
+                return schema
+
             tuple_items_validators = list(
-                map(lambda s: _parse(s).generate(), tuple_items_schemas)
+                map(
+                    lambda schema_def: _compile_schema(schema_def).generate(),
+                    tuple_items_schemas,
+                )
             )
 
             validator = zon.element_tuple(tuple_items_validators)
@@ -306,6 +333,9 @@ class ArraySchema(Schema):
                     additional_items_schema_definition = self.definition["items"]
 
                     additional_items_schema = _parse(additional_items_schema_definition)
+                    additional_items_schema.defs = (
+                        self.defs
+                    )  # FIXME: should be different
 
                     additional_items_validator = additional_items_schema.generate()
 
@@ -314,12 +344,28 @@ class ArraySchema(Schema):
             items_schema_definition = self.definition["items"]
 
             items_schema = _parse(items_schema_definition)
+            items_schema.defs = self.defs  # FIXME: should be different
 
             items_validator = items_schema.generate()
 
             validator = zon.element_list(items_validator)
 
         return validator
+
+
+class RefSchema(Schema):
+    """Sub-schema for when referenced schemas are used in-place of actual schemas.
+
+    Useful for reusability.
+    """
+
+    def __init__(self, ref: str):
+        super().__init__()
+
+        self.ref = ref
+
+    def generate(self):
+        return self.defs[self.ref].generate()
 
 
 class SchemaReader:
