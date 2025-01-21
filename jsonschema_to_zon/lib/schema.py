@@ -2,15 +2,18 @@
 Classes and methods for reading files containing valid JSON Schemas
 """
 
-from typing import Mapping, Self, Any, Iterable
+import json
 from abc import ABC, abstractmethod
+from enum import Enum, auto
+from typing import Any, Container, Iterable, Mapping, Self
 
 import zon
-from zon import Zon
-
-import json
+from zon import Zon, ZonIssue
 
 __all__ = ["SchemaReader", "Schema", "InvalidSchemaDefinition"]
+
+
+# TODO: see if we should use another sub-module for validator generation
 
 
 class InvalidSchemaDefinition(Exception):
@@ -69,27 +72,41 @@ def _parse(
     contents: Mapping[str, str | int | float | list | dict | bool | None]
 ) -> Schema:
 
-    if "type" not in contents:
-        raise InvalidSchemaDefinition(
-            f"'type' not found in JSON Schema document: {contents}"
-        )
+    match contents:
+        case {"type": schema_type, **rest}:
+            try:
 
-    try:
-        match contents["type"]:
-            case "object":
-                return ObjectSchema(contents)
-            case "array":
-                pass
-            case "integer":
-                return IntegerSchema()
-            case "number":
-                return NumberSchema()
-            case "boolean":
-                return BooleanSchema()
-            case "string":
-                return StringSchema()
-    except InvalidSchemaDefinition as e:
-        raise InvalidSchemaDefinition(f"Error when parsing object: {e}") from e
+                schema: Schema = None
+                match schema_type:
+                    case "object":
+                        schema = ObjectSchema(rest)
+                    case "array":
+                        schema = ArraySchema(rest)
+                    case "integer":
+                        schema = IntegerSchema()
+                    case "number":
+                        schema = NumberSchema()
+                    case "boolean":
+                        schema = BooleanSchema()
+                    case "string":
+                        schema = StringSchema()
+                    case _:
+                        raise InvalidSchemaDefinition(
+                            f"Unknown schema type: {schema_type}"
+                        )
+
+                return schema
+
+            except InvalidSchemaDefinition as e:
+                raise InvalidSchemaDefinition(f"Error when parsing schema: {e}") from e
+        case {"enum": values, **rest}:
+            return EnumSchema(values, rest)
+        case {"const": value, **rest}:
+            return ConstSchema(value, rest)
+        case _:
+            raise InvalidSchemaDefinition(
+                f"Unknown schema type found in JSON Schema document: {contents}"
+            )
 
 
 class BooleanSchema(Schema):
@@ -159,10 +176,12 @@ class ObjectSchema(Schema):
 
             validator_properties[property_name] = validator
 
-        extra_keys_policy = zon.ZonRecord.UnknownKeyPolicy.PASSTHROUGH
-        extra_keys_validator = None
+        validator = zon.record(
+            validator_properties,
+        )
+
         if self.definition["additionalProperties"] is False:
-            extra_keys_policy = zon.ZonRecord.UnknownKeyPolicy.STRICT
+            validator = validator.strict()
         elif (
             self.definition["additionalProperties"]
             != ObjectSchema._MARKER_ADDITIONAL_PROPERTIES
@@ -171,11 +190,9 @@ class ObjectSchema(Schema):
 
             extra_keys_validator = additional_property_schema.generate()
 
-        return zon.record(
-            validator_properties,
-            # unknown_key_policy=extra_keys_policy,
-            # catchall=extra_keys_validator,
-        )
+            validator = validator.catchall(extra_keys_validator)
+
+        return validator
 
 
 class StringSchema(Schema):
@@ -197,6 +214,112 @@ class NumberSchema(Schema):
 
     def generate(self):
         return zon.number().float()
+
+
+class JSONSchemaEnum(Zon):
+    """Validator for enumerated values in a JSON Schema document.
+
+    The default `enum` Zon is not useful in this context because it only validates string elements.
+    """
+
+    def __init__(self, values: Container):
+        super().__init__()
+
+        self.values = values
+
+    def _default_validate(self, data, ctx):
+        if data not in self.values:
+            ctx.add_issue(
+                ZonIssue(
+                    value=data, message=f"Not an element in {self.values}", path=None
+                )
+            )
+
+
+class EnumSchema(Schema):
+    """Sub-schema for enumerated values in a JSON Schema document"""
+
+    def __init__(self, values: Container, definition: dict[str, Any]):
+        super().__init__()
+
+        self.definition = definition
+        self.values = values
+
+    def generate(self):
+        return JSONSchemaEnum(self.values)
+
+
+class ConstSchema(Schema):
+    """Sub-schema for constant values in a JSON Schema document."""
+
+    def __init__(self, value: Any, definition: dict[str, Any]):
+        super().__init__()
+
+        self.definition = definition
+        self.value = value
+
+    def generate(self):
+        return zon.literal(self.value)
+
+
+class ArraySchema(Schema):
+    """Sub-schema for arrays in a JSON Schema document."""
+
+    class TYPE(Enum):
+        """Internal type used to denote, on validator generation time, which array type should be used"""
+
+        LIST = auto()
+        TUPLE = auto()
+
+    def __init__(self, definition: dict[str, Any]):
+        super().__init__()
+
+        self.schema_type: ArraySchema.TYPE = None
+        if "prefixItems" in definition:
+            self.schema_type = ArraySchema.TYPE.TUPLE
+        elif "items" not in definition:
+            raise InvalidSchemaDefinition(
+                '\'definition["items"]\' or \'definition["prefixItems"] \
+                    must be present when defining an Array schema'
+            )
+        else:
+            self.schema_type = ArraySchema.TYPE.LIST
+
+        self.definition = definition
+
+    def generate(self):
+
+        if self.schema_type == ArraySchema.TYPE.TUPLE:
+            tuple_items_schemas = self.definition["prefixItems"]
+
+            tuple_items_validators = list(
+                map(lambda s: _parse(s).generate(), tuple_items_schemas)
+            )
+
+            validator = zon.element_tuple(tuple_items_validators)
+
+            additional_items_validator = zon.anything()
+            if "items" in self.definition:
+                if self.definition["items"] is False:
+                    additional_items_validator = zon.never()
+                else:
+                    additional_items_schema_definition = self.definition["items"]
+
+                    additional_items_schema = _parse(additional_items_schema_definition)
+
+                    additional_items_validator = additional_items_schema.generate()
+
+            validator = validator.rest(additional_items_validator)
+        else:
+            items_schema_definition = self.definition["items"]
+
+            items_schema = _parse(items_schema_definition)
+
+            items_validator = items_schema.generate()
+
+            validator = zon.element_list(items_validator)
+
+        return validator
 
 
 class SchemaReader:
