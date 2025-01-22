@@ -95,10 +95,10 @@ def _parse(
     contents: Mapping[str, str | int | float | list | dict | bool | None],
 ) -> Schema:
 
+    schema: Schema = None
     match contents:
         case {"type": schema_type, **rest}:
             try:
-                schema: Schema = None
                 match schema_type:
                     case "object":
                         schema = ObjectSchema(rest)
@@ -117,26 +117,26 @@ def _parse(
                             f"Unknown schema type: {schema_type}"
                         )
 
-                return schema
-
             except InvalidSchemaDefinition as e:
                 raise InvalidSchemaDefinition(f"Error when parsing schema: {e}") from e
         case {"enum": values, **rest}:
-            return EnumSchema(values, rest)
+            schema = EnumSchema(values, rest)
         case {"const": value, **rest}:
-            return ConstSchema(value, rest)
+            schema = ConstSchema(value, rest)
         case {"$ref": def_ref}:
-            return RefSchema(def_ref)
+            schema = RefSchema(def_ref)
         case {"not": sub_schema}:
-            return NotSchema(sub_schema)
+            schema = NotSchema(sub_schema)
         case {"allOf": subschemas}:
-            return AllOfSchema(subschemas)
+            schema = AllOfSchema(subschemas)
         case {"anyOf": subschemas}:
-            return AnyOfSchema(subschemas)
+            schema = AnyOfSchema(subschemas)
         case _:
             raise InvalidSchemaDefinition(
                 f"Unknown schema type found in JSON Schema document: {contents}"
             )
+
+    return schema
 
 
 class BooleanSchema(Schema):
@@ -223,6 +223,25 @@ class ObjectSchema(Schema):
             extra_keys_validator = additional_property_schema.generate()
 
             validator = validator.catchall(extra_keys_validator)
+
+        if "dependentRequired" in self.definition:
+
+            dependents = self.definition["dependentRequired"]
+
+            def _dependent(data) -> bool:
+
+                if not isinstance(data, dict):
+                    return False
+
+                for dependent, dependencies in dependents.items():
+                    if dependent in data:
+                        for dependency in dependencies:
+                            if dependency not in data:
+                                return False
+
+                return True
+
+            validator = validator.refine(_dependent, "Dependent properties")
 
         return validator
 

@@ -14,12 +14,6 @@ schema = reader.read_file(
 
 validator = schema.generate()
 
-validator.validate(
-    {
-        "fruits": [],
-        "vegetables": [
-            {"veggieName": "batata", "veggieLike": True},
-            {"veggieName": "caralho", "veggieLike": True},
-        ],
-    }
-)
+validator.validate({"foo": True, "bar": "Hello World"})
+validator.validate({})
+validator.validate({"foo": True})
