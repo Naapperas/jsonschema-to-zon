@@ -129,6 +129,10 @@ def _parse(
             return RefSchema(def_ref)
         case {"not": sub_schema}:
             return NotSchema(sub_schema)
+        case {"allOf": subschemas}:
+            return AllOfSchema(subschemas)
+        case {"anyOf": subschemas}:
+            return AnyOfSchema(subschemas)
         case _:
             raise InvalidSchemaDefinition(
                 f"Unknown schema type found in JSON Schema document: {contents}"
@@ -476,6 +480,7 @@ class ArraySchema(Schema):
                 must_contain_schema_definition = self.must_contain
 
                 must_contain_schema = _parse(must_contain_schema_definition)
+                must_contain_schema.defs = self.defs
 
                 must_contain_schema_validator = must_contain_schema.generate()
 
@@ -522,10 +527,7 @@ class ArraySchema(Schema):
                 if not isinstance(data, Sized):
                     return False
 
-                return (
-                    len(set(data))
-                    == len(data)
-                )
+                return len(set(data)) == len(data)
 
             validator = validator.refine(
                 _unique,
@@ -584,10 +586,55 @@ class NotSchema(Schema):
 
     def generate(self):
         sub_schema = _parse(self.sub_schema_definition)
+        sub_schema.defs = self.defs
 
-        sub_shema_validator = sub_schema.generate()
+        sub_schema_validator = sub_schema.generate()
 
-        return NotValidator(sub_shema_validator)
+        return NotValidator(sub_schema_validator)
+
+
+class AllOfSchema(Schema):
+    """Sub-schema that validates a given instance against _all_ of the sub-schemas given"""
+
+    def __init__(self, subschemas: Iterable[dict[str, Any]]):
+        super().__init__()
+
+        self.subschemas = subschemas
+
+    def generate(self):
+
+        subschema_definition = self.subschemas[0]
+        subschema = _parse(subschema_definition)
+        validator = subschema.generate()
+
+        for i in range(1, len(self.subschemas)):
+            subschema_definition = self.subschemas[i]
+            subschema = _parse(subschema_definition)
+            validator = validator.and_also(subschema.generate())
+
+        return validator
+
+
+class AnyOfSchema(Schema):
+    """Sub-schema that validates a given instance against _any_ of the sub-schemas given"""
+
+    def __init__(self, subschemas: Iterable[dict[str, Any]]):
+        super().__init__()
+
+        self.subschemas = subschemas
+
+    def generate(self):
+
+        subschema_definition = self.subschemas[0]
+        subschema = _parse(subschema_definition)
+        validator = subschema.generate()
+
+        for i in range(1, len(self.subschemas)):
+            subschema_definition = self.subschemas[i]
+            subschema = _parse(subschema_definition)
+            validator = validator.or_else([subschema.generate()])
+
+        return validator
 
 
 class SchemaReader:
