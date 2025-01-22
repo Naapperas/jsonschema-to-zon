@@ -3,9 +3,10 @@ Classes and methods for reading files containing valid JSON Schemas
 """
 
 import json
+import math
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Any, Container, Iterable, Mapping, Self
+from typing import Any, Container, Iterable, Mapping, Self, Sized
 
 import zon
 from zon import Zon, ZonIssue
@@ -27,6 +28,9 @@ class Schema(ABC):
         self._version = ""
         self.id = None
         self.defs: dict[str, Schema] = {}
+        self.comment = None
+        self.title = None
+        self.description = None
 
     @property
     def version(self) -> str:
@@ -64,6 +68,10 @@ class Schema(ABC):
         if "$id" not in contents:
             raise InvalidSchemaDefinition("'$id' not found in JSON Schema document")
 
+        title = None
+        if "title" in contents:
+            title = contents["title"]
+
         defs = {}
         if "$defs" in contents:
             defs = contents["$defs"]
@@ -76,7 +84,9 @@ class Schema(ABC):
         # Parse the rest of the Schema document.
 
         schema = _parse(contents)
+        defs["#"] = schema
         schema.defs = defs
+        schema.title = title
 
         return schema
 
@@ -88,7 +98,6 @@ def _parse(
     match contents:
         case {"type": schema_type, **rest}:
             try:
-
                 schema: Schema = None
                 match schema_type:
                     case "object":
@@ -118,6 +127,8 @@ def _parse(
             return ConstSchema(value, rest)
         case {"$ref": def_ref}:
             return RefSchema(def_ref)
+        case {"not": sub_schema}:
+            return NotSchema(sub_schema)
         case _:
             raise InvalidSchemaDefinition(
                 f"Unknown schema type found in JSON Schema document: {contents}"
@@ -312,6 +323,8 @@ class JSONSchemaEnum(Zon):
                 )
             )
 
+        return data
+
 
 class EnumSchema(Schema):
     """Sub-schema for enumerated values in a JSON Schema document"""
@@ -356,13 +369,56 @@ class ArraySchema(Schema):
         if "prefixItems" in definition:
             self.schema_type = ArraySchema.TYPE.TUPLE
         elif "items" not in definition:
-            raise InvalidSchemaDefinition(
-                '\'definition["items"]\' or \'definition["prefixItems"] \
-                    must be present when defining an Array schema'
-            )
+            if "contains" not in definition:
+                raise InvalidSchemaDefinition(
+                    '\'definition["items"]\' or \'definition["prefixItems"] \
+                        must be present when defining an Array schema'
+                )
+
         else:
             self.schema_type = ArraySchema.TYPE.LIST
 
+        if "minContains" in definition:
+            if (
+                not isinstance(
+                    (min_contains := definition["minContains"]), (float, int)
+                )
+                or min_contains < 0
+            ):
+                raise InvalidSchemaDefinition(
+                    f"Invalid value for 'minContains': {min_contains}"
+                )
+
+        if "maxContains" in definition:
+            if (
+                not isinstance(
+                    (max_contains := definition["maxContains"]), (float, int)
+                )
+                or max_contains < 0
+            ):
+                raise InvalidSchemaDefinition(
+                    f"Invalid value for 'maxContains': {max_contains}"
+                )
+
+        if "minItems" in definition:
+            if (
+                not isinstance((min_items := definition["minItems"]), (float, int))
+                or min_items < 0
+            ):
+                raise InvalidSchemaDefinition(
+                    f"Invalid value for 'minItems': {min_items}"
+                )
+
+        if "maxItems" in definition:
+            if (
+                not isinstance((max_items := definition["maxItems"]), (float, int))
+                or max_items < 0
+            ):
+                raise InvalidSchemaDefinition(
+                    f"Invalid value for 'maxItems': {max_items}"
+                )
+
+        self.must_contain = definition.get("contains", None)
         self.definition = definition
 
     def generate(self):
@@ -410,6 +466,72 @@ class ArraySchema(Schema):
 
             validator = zon.element_list(items_validator)
 
+        if self.must_contain is not None:
+
+            def _contains(data) -> bool:
+
+                if not isinstance(data, (list, tuple)):
+                    return False
+
+                must_contain_schema_definition = self.must_contain
+
+                must_contain_schema = _parse(must_contain_schema_definition)
+
+                must_contain_schema_validator = must_contain_schema.generate()
+
+                valid_counter = 0
+
+                for value in data:
+                    value_valid, _ = must_contain_schema_validator.safe_validate(value)
+
+                    valid_counter += value_valid
+
+                return (
+                    max(0, self.definition.get("minContains", 0))
+                    < valid_counter
+                    < min(math.inf, self.definition.get("minContains", math.inf))
+                )
+
+            validator = validator.refine(
+                _contains,
+                f'Array or tuple must contain values that conform to "{self.must_contain}"',
+            )
+
+        if "minItems" in self.definition or "maxItems" in self.definition:
+
+            def _length(data) -> bool:
+
+                if not isinstance(data, Sized):
+                    return False
+
+                return (
+                    self.definition.get("minItems", -math.inf)
+                    <= len(data)
+                    <= self.definition.get("maxItems", math.inf)
+                )
+
+            validator = validator.refine(
+                _length,
+                "Length check",
+            )
+
+        if self.definition.get("uniqueItems", False):
+
+            def _unique(data) -> bool:
+
+                if not isinstance(data, Sized):
+                    return False
+
+                return (
+                    len(set(data))
+                    == len(data)
+                )
+
+            validator = validator.refine(
+                _unique,
+                "Uniqueness check",
+            )
+
         return validator
 
 
@@ -426,6 +548,46 @@ class RefSchema(Schema):
 
     def generate(self):
         return self.defs[self.ref].generate()
+
+
+class NotValidator(Zon):
+    """Zon that validates that input data is not valid under the underlying validator"""
+
+    def __init__(self, other: Zon):
+        super().__init__()
+
+        self.other = other
+
+    def _default_validate(self, data, ctx):
+
+        valid, _ = self.other.safe_validate(data)
+
+        # if data is not valid, no need to know why so we can discard the inner validator's errors
+
+        if valid:
+            ctx.add_issue(
+                ZonIssue(
+                    value=data, message=f"Expected {data} to not be valid", path=[]
+                )
+            )
+
+        return data
+
+
+class NotSchema(Schema):
+    """Sub-schema that makes it so data cannot validate against the underlying schema."""
+
+    def __init__(self, sub_schema_definition: dict[str, Any]):
+        super().__init__()
+
+        self.sub_schema_definition = sub_schema_definition
+
+    def generate(self):
+        sub_schema = _parse(self.sub_schema_definition)
+
+        sub_shema_validator = sub_schema.generate()
+
+        return NotValidator(sub_shema_validator)
 
 
 class SchemaReader:

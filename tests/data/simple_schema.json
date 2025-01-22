@@ -15,6 +15,12 @@
             "type": "array",
             "items": {
                 "$ref": "#/$defs/veggie"
+            },
+            "contains": {
+                "const": {
+                    "veggieName": "caralho",
+                    "veggieLike": true
+                }
             }
         }
     },
