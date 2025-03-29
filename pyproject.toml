@@ -1,11 +1,11 @@
 [project]
 name = "jsonschema-to-zon"
-version = "0.1.0"
+version = "1.0.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "zon>=2.0.1",
+    "zon==2.0.1",
 ]
 
 [dependency-groups]

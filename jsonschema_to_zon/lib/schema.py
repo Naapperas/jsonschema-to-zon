@@ -47,7 +47,7 @@ class Schema(ABC):
 
     @staticmethod
     def parse(
-        contents: Mapping[str, str | int | float | list | dict | bool | None]
+        contents: Mapping[str, str | int | float | list | dict | bool | None],
     ) -> Self:
         """Parses a dictionary containing a JSON Schema definition and returns a `Schema` object.
 
