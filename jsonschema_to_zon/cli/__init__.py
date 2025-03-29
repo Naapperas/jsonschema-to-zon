@@ -1,5 +1,4 @@
-"""_summary_
-"""
+"""_summary_"""
 
 from pathlib import Path
 

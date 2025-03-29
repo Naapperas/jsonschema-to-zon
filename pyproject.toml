@@ -1,9 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "jsonschema-to-zon"
 version = "1.0.0"
-description = "Add your description here"
+authors = [
+  { name="Nuno Pereira", email="nunoafonso2002@gmail.com" },
+]
+maintainers = [
+  { name="Nuno Pereira", email="nunoafonso2002@gmail.com" },
+]
+description = "A library that allows converting from a JSON Schema document to a Zon-compatible validator."
 readme = "README.md"
 requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "zon==2.0.1",
 ]
@@ -14,3 +29,13 @@ dev = [
     "pylint>=3.3.3",
     "pytest>=8.3.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Naapperas/jsonschema-to-zon"
+Issues = "https://github.com/Naapperas/jsonschema-to-zon/issues"
+
+[tool.setuptools]
+packages = ["jsonschema-to-zon"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=zon --cov-report lcov"
