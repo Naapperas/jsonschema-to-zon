@@ -14,9 +14,10 @@ maintainers = [
 description = "A library that allows converting from a JSON Schema document to a Zon-compatible validator."
 readme = "README.md"
 requires-python = ">=3.13"
+keywords = ["zon", "jsonschema", "jsonschema-to-zon"]
+license = "MIT"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -33,12 +34,6 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/Naapperas/jsonschema-to-zon"
 Issues = "https://github.com/Naapperas/jsonschema-to-zon/issues"
-
-[project.scripts]
-jsonschema-to-zon = "jsonschema_to_zon.cli:main"
-
-[tool.setuptools]
-packages = ["jsonschema-to-zon"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=zon --cov-report lcov"
