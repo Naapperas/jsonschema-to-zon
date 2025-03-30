@@ -1,5 +1,7 @@
 # jsonschema_to_zon - Convert your JSON Schema documents into valid Zon validators
 
+[![Coverage Status](https://coveralls.io/repos/github/Naapperas/jsonschema-to-zon/badge.svg?branch=main)](https://coveralls.io/github/Naapperas/jsonschema-to-zon?branch=main)
+
 A python utility that allows reading and JSON Schema documents and converting them into `zon` validators that respect the schema defined in those files.
 
 Developed as a companion project to [`zon`](https://github.com/Naapperas/zon).
@@ -92,9 +94,10 @@ Tests can be found in the [tests](tests) folder. `jsonschema-to-zon` uses `pytes
 
 To run the tests, simply run:
 
-```bash 
+```bash
 pytest test
 ```
+Coverage can be found on [Coveralls](https://coveralls.io/github/Naapperas/jsonschema-to-zon).
 
 ## Contributing
 
