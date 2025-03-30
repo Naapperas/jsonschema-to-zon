@@ -1,6 +1,8 @@
 import tempfile
 import pytest
 
+import jsonschema_to_zon
+
 
 @pytest.fixture
 def schema_content_str():
