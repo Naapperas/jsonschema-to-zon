@@ -8,8 +8,8 @@ import json
 import math
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Any, Container, Iterable, Self
-from collections.abc import Mapping, Sized
+from typing import Any, Self
+from collections.abc import Mapping, Sized, Iterable, Container
 
 import zon
 from zon import Zon, ZonIssue
@@ -258,7 +258,7 @@ class StringSchema(Schema):
         self.definition = definition
 
     def generate(self) -> Zon:
-        validator = zon.string()
+        validator: Zon = zon.string()
 
         if "minLength" in self.definition:
             validator = validator.min(self.definition["minLength"])
