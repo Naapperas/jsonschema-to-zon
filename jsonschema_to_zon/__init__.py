@@ -1,4 +1,4 @@
-from jsonschema_to_zon.lib.schema import SchemaReader, Schema, InvalidSchemaDefinition
+from .schema import SchemaReader, Schema, InvalidSchemaDefinition
 
 __version__ = "1.0.0"
 __author__ = "Nuno Pereira"

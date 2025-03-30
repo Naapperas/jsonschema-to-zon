@@ -34,6 +34,9 @@ dev = [
 Homepage = "https://github.com/Naapperas/jsonschema-to-zon"
 Issues = "https://github.com/Naapperas/jsonschema-to-zon/issues"
 
+[project.scripts]
+jsonschema-to-zon = "jsonschema_to_zon.cli:main"
+
 [tool.setuptools]
 packages = ["jsonschema-to-zon"]
 
