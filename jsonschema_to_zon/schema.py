@@ -2,11 +2,14 @@
 Classes and methods for reading files containing valid JSON Schemas
 """
 
+from __future__ import annotations
+
 import json
 import math
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Any, Container, Iterable, Mapping, Self, Sized
+from typing import Any, Container, Iterable, Self
+from collections.abc import Mapping, Sized
 
 import zon
 from zon import Zon, ZonIssue
@@ -52,15 +55,15 @@ class Schema(ABC):
         """Parses a dictionary containing a JSON Schema definition and returns a `Schema` object.
 
         Args:
-            contents (Mapping[str, str  |  int  |  float  |  list  |  dict  |  bool  |  None]):
-            a dictionary containing a definition of a JSON Schema document.
+            contents (Mapping[str, str | int | float | list | dict | bool | None]): a dictionary containing a definition of a JSON Schema document.
 
         Raises:
             InvalidSchemaDefinition: if `contents` contains an invalid schema definition
 
         Returns:
-            Schema: the parsed Schema object
+            Self: the parsed Schema object
         """
+
         # TODO: implement validation of schema.
 
         # Parse top-level properties of the Schema document
@@ -455,12 +458,10 @@ class ArraySchema(Schema):
 
                 return schema
 
-            tuple_items_validators = list(
-                map(
-                    lambda schema_def: _compile_schema(schema_def).generate(),
-                    tuple_items_schemas,
-                )
-            )
+            tuple_items_validators = [
+                _compile_schema(schema_def).generate()
+                for schema_def in tuple_items_schemas
+            ]
 
             validator = zon.element_tuple(tuple_items_validators)
 
